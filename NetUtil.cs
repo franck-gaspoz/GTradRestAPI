@@ -3,11 +3,16 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
+using System.Web.Http;
 
 namespace GTradRestAPI
 {
+    /// <summary>
+    /// internal net utils
+    /// </summary>
     internal class NetUtil
     {
         /// <summary>
@@ -15,11 +20,20 @@ namespace GTradRestAPI
         /// </summary>
         internal string UserAgent { get; set; } = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36";
 
-        internal int NetworkQueryTimeout { get; set; } = 1000;
+        /// <summary>
+        /// query time out
+        /// </summary>
+        internal int NetworkQueryTimeout { get; set; } = 2000;
 
-        internal NetUtil()
+        /// <summary>
+        /// constructeur
+        /// </summary>
+        internal NetUtil(
+            GTradRestAPISettings settings
+            )
         {
-
+            this.NetworkQueryTimeout = settings.NetworkQueryTimeout;
+            this.UserAgent = settings.UserAgent;
         }
 
         /// <summary>
@@ -37,7 +51,7 @@ namespace GTradRestAPI
         /// </summary>
         /// <param name="url">uri</param>
         /// <returns>resut|null,status description</returns>
-        public Tuple<string, string> GetQueryResponse(
+        public Tuple<string, string,Exception> GetQueryResponse(
             string url
             )
         {
@@ -54,17 +68,38 @@ namespace GTradRestAPI
                             using (var str = new StreamReader(sr))
                             {
                                 r = str.ReadToEnd();
-                                return Tuple.Create(r, rep.StatusDescription);
+                                return Tuple.Create<string, string, Exception>(r, rep.StatusDescription,null);
                             }
                         }
                     }
                     else
-                        return Tuple.Create<string, string>(null, rep.StatusDescription);
+                        return Tuple.Create<string, string,Exception>(null, rep.StatusDescription,null);
                 }
             }
             catch (Exception Ex)
             {
-                return Tuple.Create<string, string>(null, Ex.Message);
+                return Tuple.Create<string, string,Exception>(null, Ex.Message,Ex);
+            }
+        }
+
+        /// <summary>
+        /// preform query at url and return result (or null) , status description
+        /// </summary>
+        /// <param name="url">uri</param>
+        /// <returns>resut|null,status description</returns>
+        public async Task<Tuple<string, string, Exception>> GetQueryResponseAsync(
+            string url
+            )
+        {
+            try
+            {
+                var q = GetQuery(url);
+                var rep = await GetResponseAsync(q);
+                return Tuple.Create<string, string, Exception>(rep, HttpStatusCode.OK+"", null);
+            }
+            catch (Exception Ex)
+            {
+                return Tuple.Create<string, string, Exception>(null, Ex.Message, Ex);
             }
         }
 
@@ -105,10 +140,26 @@ namespace GTradRestAPI
         /// obtain response from query
         /// </summary>
         /// <param name="query">query object</param>
+        /// <exception cref="System.InvalidOperationException"></exception>
+        /// <exception cref="System.Net.ProtocolViolationException"></exception>
+        /// <exception cref="System.NotSupportedException"></exception>
+        /// <exception cref="System.Net.WebException"></exception>
         /// <returns>web repsonse</returns>
         public HttpWebResponse GetResponse(HttpWebRequest query)
         {
             return (HttpWebResponse)query.GetResponse();
+        }
+
+        /// <summary>
+        /// async obtain response from query
+        /// </summary>
+        /// <param name="query"></param>
+        /// <returns></returns>
+        public async Task<string> GetResponseAsync(HttpWebRequest query)
+        {
+            var client = new HttpClient();
+            var content = await client.GetStringAsync(query.RequestUri.AbsoluteUri);
+            return content;
         }
 
         /// <summary>
